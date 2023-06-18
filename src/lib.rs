@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io;
 use tracing::span::{Attributes, Record};
@@ -11,14 +12,27 @@ use tracing::{Event, Id, Subscriber};
 #[derive(Debug)]
 struct CustomFieldStorage(BTreeMap<String, serde_json::Value>);
 
-pub struct JsonLayer;
+pub struct JsonLayer<
+    W = fn() -> io::Stdout,
+> {
+    make_writer: W,
+}
 
-impl<S> layer::Layer<S> for JsonLayer
+impl Default for JsonLayer {
+    fn default() -> Self {
+        JsonLayer{
+            make_writer: io::stdout,
+        }
+    }
+}
+
+
+impl<S, W> layer::Layer<S> for JsonLayer<W>
     where
         S: Subscriber + for<'a> LookupSpan<'a>,
         // N: for<'writer> FormatFields<'writer> + 'static,
         // E: FormatEvent<S, N> + 'static,
-        // W: for<'writer> MakeWriter<'writer> + 'static,
+        W: for<'writer> MakeWriter<'writer> + 'static,
 {
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         // Build our json object from the field values like we have been
@@ -158,55 +172,15 @@ impl<S> layer::Layer<S> for JsonLayer
             "fields": fields,
             "spans": spans,
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
-        // thread_local! {
-        //     static BUF: RefCell<String> = RefCell::new(String::new());
-        // }
-        //
-        // BUF.with(|buf| {
-        //     let borrow = buf.try_borrow_mut();
-        //     let mut a;
-        //     let mut b;
-        //     let mut buf = match borrow {
-        //         Ok(buf) => {
-        //             a = buf;
-        //             &mut *a
-        //         }
-        //         _ => {
-        //             b = String::new();
-        //             &mut b
-        //         }
-        //     };
-        //
-        //     let ctx = self.make_ctx(ctx, event);
-        //     if self
-        //         .fmt_event
-        //         .format_event(
-        //             &ctx,
-        //             format::Writer::new(&mut buf).with_ansi(self.is_ansi),
-        //             event,
-        //         )
-        //         .is_ok()
-        //     {
-        //         let mut writer = self.make_writer.make_writer_for(event.metadata());
-        //         let res = io::Write::write_all(&mut writer, buf.as_bytes());
-        //         if self.log_internal_errors {
-        //             if let Err(e) = res {
-        //                 eprintln!("[tracing-subscriber] Unable to write an event to the Writer for this Subscriber! Error: {}\n", e);
-        //             }
-        //         }
-        //     } else if self.log_internal_errors {
-        //         let err_msg = format!("Unable to format the following event. Name: {}; Fields: {:?}\n",
-        //                               event.metadata().name(), event.fields());
-        //         let mut writer = self.make_writer.make_writer_for(event.metadata());
-        //         let res = io::Write::write_all(&mut writer, err_msg.as_bytes());
-        //         if let Err(e) = res {
-        //             eprintln!("[tracing-subscriber] Unable to write an \"event formatting error\" to the Writer for this Subscriber! Error: {}\n", e);
-        //         }
-        //     }
-        //
-        //     buf.clear();
-        // });
+        let message = serde_json::to_string_pretty(&output).unwrap();
+        //println!("{}", &message);
+
+        let mut writer = self.make_writer.make_writer_for(event.metadata());
+        let res = io::Write::write_all(&mut writer, message.as_bytes());
+        if let Err(e) = res {
+            todo!("Think about the error message here");
+            eprintln!("[tracing-subscriber] Unable to write an event to the Writer for this Subscriber! Error: {}\n", e);
+        }
     }
 }
 
@@ -278,17 +252,23 @@ mod tests {
 
     #[test]
     fn foo() {
-        let subscriber = Registry::default().with(JsonLayer);
+        tracing_subscriber::fmt().pretty().init();
+
+        let subscriber = Registry::default().with(JsonLayer::default());
+
+        tracing::info!("BEFORE");
 
         with_default(subscriber, || {
             let _span1 = tracing::info_span!("Top level", field_top = 0).entered();
             tracing::info!("FOOBAR");
-        })
+        });
+
+        tracing::info!("AFTER");
     }
 
     #[test]
     fn without_any_spans() {
-        let subscriber = Registry::default().with(JsonLayer);
+        let subscriber = Registry::default().with(JsonLayer::default());
 
         with_default(subscriber, || {
             // TODO: Should not fail in on_event()
