@@ -239,6 +239,8 @@ pub fn add(left: usize, right: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
     use tracing::subscriber;
     use tracing::subscriber::with_default;
     use tracing_subscriber::Registry;
@@ -250,20 +252,61 @@ mod tests {
         assert_eq!(result, 4);
     }
 
+
+
+    struct MyWriter {
+        data: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl io::Write for MyWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let mut data = self.data.lock().unwrap();
+            (*data).push(String::from_utf8_lossy(buf).to_string());
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            todo!()
+        }
+    }
+
+    struct MyMakeWriter {
+        data: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl<'a>  MakeWriter<'a> for MyMakeWriter {
+        type Writer = MyWriter;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            MyWriter{ data: self.data.clone() }
+        }
+    }
+
     #[test]
     fn foo() {
         tracing_subscriber::fmt().pretty().init();
 
-        let subscriber = Registry::default().with(JsonLayer::default());
+        let data = Arc::new(Mutex::new(vec![]));
+        let layer = JsonLayer{
+            make_writer: MyMakeWriter{data: data.clone() }
+        };
+
+        let subscriber = Registry::default().with(layer);
 
         tracing::info!("BEFORE");
 
         with_default(subscriber, || {
             let _span1 = tracing::info_span!("Top level", field_top = 0).entered();
             tracing::info!("FOOBAR");
+            tracing::error!("BAZ");
         });
 
         tracing::info!("AFTER");
+
+        let data = data.lock().unwrap();
+        for d in (*data).iter() {
+            dbg!(d);
+        }
     }
 
     #[test]
