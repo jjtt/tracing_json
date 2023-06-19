@@ -1,38 +1,53 @@
-use std::cell::RefCell;
+use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io;
 use tracing::span::{Attributes, Record};
-use tracing_subscriber::fmt::{FormatEvent, FormatFields, MakeWriter};
-use tracing_subscriber::layer;
-use tracing_subscriber::layer::{Context, Layered};
-use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::prelude::*;
 use tracing::{Event, Id, Subscriber};
+use tracing_subscriber::layer;
+use tracing_subscriber::layer::Context;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::registry::LookupSpan;
 
 #[derive(Debug)]
 struct CustomFieldStorage(BTreeMap<String, serde_json::Value>);
 
-pub struct JsonLayer<
-    W = fn() -> io::Stdout,
-> {
-    make_writer: W,
+trait JsonOutput<'a> {
+    fn write(&self, value: Value);
+}
+
+#[derive(Default)]
+pub struct JsonStdout {
+    pretty: bool,
+}
+
+impl<'a> JsonOutput<'a> for JsonStdout {
+    fn write(&self, value: Value) {
+        println!(
+            "{}",
+            if self.pretty {
+                serde_json::to_string_pretty(&value).unwrap()
+            } else {
+                serde_json::to_string(&value).unwrap()
+            }
+        );
+    }
+}
+
+pub struct JsonLayer<O = JsonStdout> {
+    output: O,
 }
 
 impl Default for JsonLayer {
     fn default() -> Self {
-        JsonLayer{
-            make_writer: io::stdout,
+        JsonLayer {
+            output: JsonStdout::default(),
         }
     }
 }
 
-
 impl<S, W> layer::Layer<S> for JsonLayer<W>
-    where
-        S: Subscriber + for<'a> LookupSpan<'a>,
-        // N: for<'writer> FormatFields<'writer> + 'static,
-        // E: FormatEvent<S, N> + 'static,
-        W: for<'writer> MakeWriter<'writer> + 'static,
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    W: for<'output> JsonOutput<'output> + 'static,
 {
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         // Build our json object from the field values like we have been
@@ -66,83 +81,6 @@ impl<S, W> layer::Layer<S> for JsonLayer<W>
         values.record(&mut visitor);
     }
 
-    // fn on_enter(&self, id: &Id, ctx: Context<'_, S>) {
-    //     if self.fmt_span.trace_enter() || self.fmt_span.trace_close() && self.fmt_span.fmt_timing {
-    //         let span = ctx.span(id).expect("Span not found, this is a bug");
-    //         let mut extensions = span.extensions_mut();
-    //         if let Some(timings) = extensions.get_mut::<Timings>() {
-    //             let now = Instant::now();
-    //             timings.idle += (now - timings.last).as_nanos() as u64;
-    //             timings.last = now;
-    //         }
-    //
-    //         if self.fmt_span.trace_enter() {
-    //             with_event_from_span!(id, span, "message" = "enter", |event| {
-    //                 drop(extensions);
-    //                 drop(span);
-    //                 self.on_event(&event, ctx);
-    //             });
-    //         }
-    //     }
-    // }
-
-    // fn on_exit(&self, id: &Id, ctx: Context<'_, S>) {
-    //     if self.fmt_span.trace_exit() || self.fmt_span.trace_close() && self.fmt_span.fmt_timing {
-    //         let span = ctx.span(id).expect("Span not found, this is a bug");
-    //         let mut extensions = span.extensions_mut();
-    //         if let Some(timings) = extensions.get_mut::<Timings>() {
-    //             let now = Instant::now();
-    //             timings.busy += (now - timings.last).as_nanos() as u64;
-    //             timings.last = now;
-    //         }
-    //
-    //         if self.fmt_span.trace_exit() {
-    //             with_event_from_span!(id, span, "message" = "exit", |event| {
-    //                 drop(extensions);
-    //                 drop(span);
-    //                 self.on_event(&event, ctx);
-    //             });
-    //         }
-    //     }
-    // }
-
-    // fn on_close(&self, id: Id, ctx: Context<'_, S>) {
-    //     if self.fmt_span.trace_close() {
-    //         let span = ctx.span(&id).expect("Span not found, this is a bug");
-    //         let extensions = span.extensions();
-    //         if let Some(timing) = extensions.get::<Timings>() {
-    //             let Timings {
-    //                 busy,
-    //                 mut idle,
-    //                 last,
-    //             } = *timing;
-    //             idle += (Instant::now() - last).as_nanos() as u64;
-    //
-    //             let t_idle = field::display(TimingDisplay(idle));
-    //             let t_busy = field::display(TimingDisplay(busy));
-    //
-    //             with_event_from_span!(
-    //                 id,
-    //                 span,
-    //                 "message" = "close",
-    //                 "time.busy" = t_busy,
-    //                 "time.idle" = t_idle,
-    //                 |event| {
-    //                     drop(extensions);
-    //                     drop(span);
-    //                     self.on_event(&event, ctx);
-    //                 }
-    //             );
-    //         } else {
-    //             with_event_from_span!(id, span, "message" = "close", |event| {
-    //                 drop(extensions);
-    //                 drop(span);
-    //                 self.on_event(&event, ctx);
-    //             });
-    //         }
-    //     }
-    // }
-
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
         // All of the span context
         let scope = ctx.event_scope(event).unwrap();
@@ -172,15 +110,8 @@ impl<S, W> layer::Layer<S> for JsonLayer<W>
             "fields": fields,
             "spans": spans,
         });
-        let message = serde_json::to_string_pretty(&output).unwrap();
-        //println!("{}", &message);
 
-        let mut writer = self.make_writer.make_writer_for(event.metadata());
-        let res = io::Write::write_all(&mut writer, message.as_bytes());
-        if let Err(e) = res {
-            todo!("Think about the error message here");
-            eprintln!("[tracing-subscriber] Unable to write an event to the Writer for this Subscriber! Error: {}\n", e);
-        }
+        self.output.write(output);
     }
 }
 
@@ -231,20 +162,16 @@ impl<'a> tracing::field::Visit for JsonVisitor<'a> {
     }
 }
 
-
-
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
+    use super::*;
     use std::sync::{Arc, Mutex};
-    use tracing::subscriber;
     use tracing::subscriber::with_default;
     use tracing_subscriber::Registry;
-    use super::*;
 
     #[test]
     fn it_works() {
@@ -252,33 +179,14 @@ mod tests {
         assert_eq!(result, 4);
     }
 
-
-
-    struct MyWriter {
-        data: Arc<Mutex<Vec<String>>>,
+    struct TestOutput {
+        data: Arc<Mutex<Vec<Value>>>,
     }
 
-    impl io::Write for MyWriter {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    impl<'a> JsonOutput<'a> for TestOutput {
+        fn write(&self, value: Value) {
             let mut data = self.data.lock().unwrap();
-            (*data).push(String::from_utf8_lossy(buf).to_string());
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            todo!()
-        }
-    }
-
-    struct MyMakeWriter {
-        data: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl<'a>  MakeWriter<'a> for MyMakeWriter {
-        type Writer = MyWriter;
-
-        fn make_writer(&'a self) -> Self::Writer {
-            MyWriter{ data: self.data.clone() }
+            (*data).push(value);
         }
     }
 
@@ -287,8 +195,8 @@ mod tests {
         tracing_subscriber::fmt().pretty().init();
 
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer{
-            make_writer: MyMakeWriter{data: data.clone() }
+        let layer = JsonLayer {
+            output: TestOutput { data: data.clone() },
         };
 
         let subscriber = Registry::default().with(layer);
