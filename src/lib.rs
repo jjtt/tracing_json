@@ -1,5 +1,4 @@
-use serde_json::Value;
-use std::collections::BTreeMap;
+use serde_json::{Map, Value};
 use tracing::span::{Attributes, Record};
 use tracing::{Event, Id, Subscriber};
 use tracing_subscriber::layer;
@@ -8,7 +7,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
 #[derive(Debug)]
-struct CustomFieldStorage(BTreeMap<String, serde_json::Value>);
+struct CustomFieldStorage(Map<String, serde_json::Value>);
 
 trait JsonOutput<'a> {
     fn write(&self, value: Value);
@@ -51,7 +50,7 @@ where
 {
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         // Build our json object from the field values like we have been
-        let mut fields = BTreeMap::new();
+        let mut fields = Map::new();
         let mut visitor = JsonVisitor(&mut fields);
         attrs.record(&mut visitor);
 
@@ -74,7 +73,7 @@ where
         let mut extensions_mut = span.extensions_mut();
         let custom_field_storage: &mut CustomFieldStorage =
             extensions_mut.get_mut::<CustomFieldStorage>().unwrap();
-        let json_data: &mut BTreeMap<String, serde_json::Value> = &mut custom_field_storage.0;
+        let json_data: &mut Map<String, serde_json::Value> = &mut custom_field_storage.0;
 
         // And add to using our old friend the visitor!
         let mut visitor = JsonVisitor(json_data);
@@ -82,40 +81,42 @@ where
     }
 
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
+        let mut fields = Map::new();
+
         // All of the span context
         let scope = ctx.event_scope(event).unwrap();
-        let mut spans = vec![];
+
+        // The fields of the spans
         for span in scope.from_root() {
             let extensions = span.extensions();
             let storage = extensions.get::<CustomFieldStorage>().unwrap();
-            let field_data: &BTreeMap<String, serde_json::Value> = &storage.0;
-            spans.push(serde_json::json!({
-                "target": span.metadata().target(),
-                "name": span.name(),
-                "level": format!("{:?}", span.metadata().level()),
-                "fields": field_data,
-            }));
+            let field_data: &Map<String, serde_json::Value> = &storage.0;
+
+            for (key, value) in field_data {
+                fields.insert(key.clone(), value.clone());
+            }
         }
 
         // The fields of the event
-        let mut fields = BTreeMap::new();
         let mut visitor = JsonVisitor(&mut fields);
         event.record(&mut visitor);
 
+        // Add default fields
+        fields.insert("target".to_string(), event.metadata().target().into());
+        fields.insert("name".to_string(), event.metadata().name().into());
+        fields.insert(
+            "level".to_string(),
+            format!("{:?}", event.metadata().level()).into(),
+        );
+
         // And create our output
-        let output = serde_json::json!({
-            "target": event.metadata().target(),
-            "name": event.metadata().name(),
-            "level": format!("{:?}", event.metadata().level()),
-            "fields": fields,
-            "spans": spans,
-        });
+        let output = fields.into();
 
         self.output.write(output);
     }
 }
 
-struct JsonVisitor<'a>(&'a mut BTreeMap<String, serde_json::Value>);
+struct JsonVisitor<'a>(&'a mut Map<String, serde_json::Value>);
 
 impl<'a> tracing::field::Visit for JsonVisitor<'a> {
     fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
@@ -191,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn foo() {
+    fn one_span_some_fields() {
         tracing_subscriber::fmt().pretty().init();
 
         let data = Arc::new(Mutex::new(vec![]));
@@ -205,7 +206,7 @@ mod tests {
 
         with_default(subscriber, || {
             let _span1 = tracing::info_span!("Top level", field_top = 0).entered();
-            tracing::info!("FOOBAR");
+            tracing::info!(field_event = "from event", "FOOBAR");
             tracing::error!("BAZ");
         });
 
@@ -215,6 +216,28 @@ mod tests {
         for d in (*data).iter() {
             dbg!(d);
         }
+        let mut iter = (*data).iter();
+
+        let mut first = iter.next().unwrap().clone();
+        let first_map = first.as_object_mut().unwrap();
+        assert!(first_map.contains_key("name"));
+        assert!(first_map
+            .remove("name")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .starts_with("event src/lib.rs:"));
+
+        assert_eq!(
+            serde_json::json!({
+                "target": "tracing_json::tests",
+                "level": "Level(Info)",
+                "message": "FOOBAR",
+                "field_top": 0,
+                "field_event": "from event"
+            }),
+            first
+        )
     }
 
     #[test]
