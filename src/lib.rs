@@ -1,4 +1,6 @@
 use serde_json::{Map, Value};
+use time::format_description::well_known::Iso8601;
+use time::OffsetDateTime;
 use tracing::span::{Attributes, Record};
 use tracing::{Event, Id, Subscriber};
 use tracing_subscriber::layer;
@@ -107,6 +109,13 @@ where
         fields.insert(
             "level".to_string(),
             format!("{:?}", event.metadata().level()).into(),
+        );
+        fields.insert(
+            "timestamp".to_string(),
+            OffsetDateTime::now_utc()
+                .format(&Iso8601::DEFAULT)
+                .unwrap()
+                .into(),
         );
 
         // And create our output
