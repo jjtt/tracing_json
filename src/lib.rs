@@ -38,6 +38,7 @@ pub struct JsonLayer<O = JsonStdout> {
     output: O,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for JsonLayer {
     fn default() -> Self {
         JsonLayer {
