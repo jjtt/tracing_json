@@ -85,17 +85,16 @@ where
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
         let mut fields = Map::new();
 
-        // All of the span context
-        let scope = ctx.event_scope(event).unwrap();
-
         // The fields of the spans
-        for span in scope.from_root() {
-            let extensions = span.extensions();
-            let storage = extensions.get::<CustomFieldStorage>().unwrap();
-            let field_data: &Map<String, serde_json::Value> = &storage.0;
+        if let Some(scope) = ctx.event_scope(event) {
+            for span in scope.from_root() {
+                let extensions = span.extensions();
+                let storage = extensions.get::<CustomFieldStorage>().unwrap();
+                let field_data: &Map<String, serde_json::Value> = &storage.0;
 
-            for (key, value) in field_data {
-                fields.insert(key.clone(), value.clone());
+                for (key, value) in field_data {
+                    fields.insert(key.clone(), value.clone());
+                }
             }
         }
 
