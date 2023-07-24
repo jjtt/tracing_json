@@ -5,6 +5,7 @@ use tracing::span::{Attributes, Record};
 use tracing::{Event, Id, Subscriber};
 use tracing_subscriber::layer;
 use tracing_subscriber::layer::Context;
+#[allow(unused_imports)]
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
