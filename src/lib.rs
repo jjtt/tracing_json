@@ -108,8 +108,8 @@ where
         fields.insert("target".to_string(), event.metadata().target().into());
         fields.insert("name".to_string(), event.metadata().name().into());
         fields.insert(
-            "level".to_string(),
-            format!("{:?}", event.metadata().level()).into(),
+            "log_level".to_string(),
+            event.metadata().level().as_str().into(),
         );
         fields.insert(
             "timestamp".to_string(),
@@ -263,7 +263,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_top": 0,
                 "field_event": "from event"
@@ -275,7 +275,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Error)",
+                "log_level": "ERROR",
                 "message": "BAZ",
                 "field_top": 0,
             }),
@@ -309,7 +309,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_top": 0,
                 "field_second": 1,
@@ -345,7 +345,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_overwrite": 1,
                 "field_event": "from event"
@@ -380,7 +380,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_overwrite": "from event"
             }),
@@ -415,7 +415,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "ONE",
                 "field_top": 0,
                 "field_event": "from event one"
@@ -427,7 +427,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "TWO",
                 "field_top": 0,
                 "field_second": 1,
@@ -464,7 +464,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "FOOBAR",
                 "event_field": 1.1,
                 "recorded_field": "foo",
@@ -501,7 +501,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "FOOBAR",
                 "event_field": 1.1,
                 "span_field": "foo",
@@ -534,7 +534,7 @@ mod tests {
         assert_json_timestamp_name(
             serde_json::json!({
                 "target": "tracing_json::tests",
-                "level": "Level(Info)",
+                "log_level": "INFO",
                 "message": "FOOBAR",
                 "event_field": 1.1,
             }),
