@@ -12,4 +12,4 @@ tracing-subscriber = "0.3.17"
 time = { version = "0.3.22", features = ["formatting"] }
 
 [dev-dependencies]
-time = { version = "0.3.22", features = ["parsing"] }
+time = { version = "0.3.22", features = ["parsing", "macros"] }

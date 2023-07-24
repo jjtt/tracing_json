@@ -1,5 +1,6 @@
 use serde_json::{Map, Value};
 use time::format_description::well_known::Iso8601;
+use time::formatting::Formattable;
 use time::OffsetDateTime;
 use tracing::span::{Attributes, Record};
 use tracing::{Event, Id, Subscriber};
@@ -12,7 +13,7 @@ use tracing_subscriber::registry::LookupSpan;
 #[derive(Debug)]
 struct CustomFieldStorage(Map<String, Value>);
 
-pub trait JsonOutput<'a> {
+pub trait JsonOutput {
     fn write(&self, value: Value);
 }
 
@@ -21,7 +22,7 @@ pub struct JsonStdout {
     pretty: bool,
 }
 
-impl<'a> JsonOutput<'a> for JsonStdout {
+impl JsonOutput for JsonStdout {
     fn write(&self, value: Value) {
         println!(
             "{}",
@@ -34,40 +35,57 @@ impl<'a> JsonOutput<'a> for JsonStdout {
     }
 }
 
-pub struct JsonLayer<O = JsonStdout> {
+pub struct JsonLayer<O = JsonStdout, F = Iso8601> {
     output: O,
+    timestamp_format: F,
 }
 
-impl<O1> JsonLayer<O1>
-where
-    O1: for<'output> JsonOutput<'output> + 'static,
-{
-    pub fn with_output<O2>(self, output: O2) -> JsonLayer<O2> {
-        JsonLayer { output }
-    }
-}
-
-#[allow(clippy::derivable_impls)]
 impl Default for JsonLayer {
     fn default() -> Self {
         JsonLayer {
             output: JsonStdout::default(),
+            timestamp_format: Iso8601::DEFAULT,
         }
     }
 }
 
-impl JsonLayer<JsonStdout> {
-    pub fn pretty() -> Self {
+impl JsonLayer<JsonStdout, Iso8601> {
+    pub fn pretty() -> JsonLayer<JsonStdout, Iso8601> {
+        JsonLayer::default().with_output(JsonStdout { pretty: true })
+    }
+}
+
+impl<O, F> JsonLayer<O, F>
+where
+    F: Formattable,
+    O: JsonOutput,
+{
+    pub fn with_output<O2>(self, output: O2) -> JsonLayer<O2, F>
+    where
+        O2: JsonOutput,
+    {
         JsonLayer {
-            output: JsonStdout { pretty: true },
+            output,
+            timestamp_format: self.timestamp_format,
+        }
+    }
+
+    pub fn with_timestamp_format<F2>(self, timestamp_format: F2) -> JsonLayer<O, F2>
+    where
+        F2: Formattable,
+    {
+        JsonLayer {
+            output: self.output,
+            timestamp_format,
         }
     }
 }
 
-impl<S, W> layer::Layer<S> for JsonLayer<W>
+impl<S, O, F> layer::Layer<S> for JsonLayer<O, F>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
-    W: for<'output> JsonOutput<'output> + 'static,
+    O: JsonOutput + 'static,
+    F: Formattable + 'static,
 {
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         // Build our json object from the field values like we have been
@@ -131,7 +149,7 @@ where
         fields.insert(
             "timestamp".to_string(),
             OffsetDateTime::now_utc()
-                .format(&Iso8601::DEFAULT)
+                .format(&self.timestamp_format)
                 .unwrap()
                 .into(),
         );
@@ -194,16 +212,37 @@ impl<'a> tracing::field::Visit for JsonVisitor<'a> {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use time::macros::format_description;
+    use time::parsing::Parsable;
+    use time::PrimitiveDateTime;
     use tracing::field;
     use tracing::subscriber::with_default;
     use tracing_subscriber::Registry;
 
-    /// A helper method for asserting a serde::Value matches expectations
+    /// A helper function for asserting a serde::Value matches expectations
     fn assert_json_timestamp_name(
         expected: Value,
         name_value_prefix: &str,
         before: &OffsetDateTime,
         value: &mut Value,
+    ) {
+        assert_json_timestamp_name_with_format(
+            expected,
+            name_value_prefix,
+            before,
+            value,
+            &Iso8601::DEFAULT,
+        )
+    }
+
+    /// A helper function for asserting a serde::Value matches expectations
+    fn assert_json_timestamp_name_with_format(
+        expected: Value,
+        name_value_prefix: &str,
+        before: &OffsetDateTime,
+        value: &mut Value,
+        timestamp_format: &(impl Parsable + ?Sized),
     ) {
         let map = value.as_object_mut().unwrap();
         assert!(map.contains_key("name"));
@@ -221,10 +260,11 @@ mod tests {
             .as_str()
             .expect("field 'timestamp' should be a string")
             .to_string();
-        let parsed = OffsetDateTime::parse(&timestamp, &Iso8601::DEFAULT)
-            .expect("timestamp should be parseable");
+        let parsed = PrimitiveDateTime::parse(&timestamp, timestamp_format)
+            .expect("timestamp should be parseable")
+            .assume_utc();
         assert!(
-            parsed.ge(before),
+            (parsed + Duration::from_millis(1)).ge(before),
             "timestamp ({}) must not be before {}",
             timestamp,
             before
@@ -244,7 +284,7 @@ mod tests {
         data: Arc<Mutex<Vec<Value>>>,
     }
 
-    impl<'a> JsonOutput<'a> for TestOutput {
+    impl JsonOutput for TestOutput {
         fn write(&self, value: Value) {
             let mut data = self.data.lock().unwrap();
             (*data).push(value);
@@ -542,6 +582,42 @@ mod tests {
             "event src/lib.rs:",
             &before,
             iter.next().unwrap(),
+        );
+        assert_eq!(None, iter.next(), "No more logged events");
+    }
+
+    #[test]
+    fn custom_timestamp() {
+        let timestamp_format = format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+        );
+        let data = Arc::new(Mutex::new(vec![]));
+        let layer = JsonLayer::default()
+            .with_output(TestOutput { data: data.clone() })
+            .with_timestamp_format(timestamp_format);
+
+        let subscriber = Registry::default().with(layer);
+
+        let before = OffsetDateTime::now_utc();
+
+        with_default(subscriber, || {
+            tracing::info!(event_field = 1.1, "FOOBAR");
+        });
+
+        let mut data = data.lock().unwrap();
+        let mut iter = (*data).iter_mut();
+
+        assert_json_timestamp_name_with_format(
+            serde_json::json!({
+                "target": "tracing_json::tests",
+                "log_level": "INFO",
+                "message": "FOOBAR",
+                "event_field": 1.1,
+            }),
+            "event src/lib.rs:",
+            &before,
+            iter.next().unwrap(),
+            &timestamp_format,
         );
         assert_eq!(None, iter.next(), "No more logged events");
     }
