@@ -47,6 +47,14 @@ impl Default for JsonLayer {
     }
 }
 
+impl JsonLayer<JsonStdout> {
+    pub fn pretty() -> Self {
+        JsonLayer {
+            output: JsonStdout { pretty: true },
+        }
+    }
+}
+
 impl<S, W> layer::Layer<S> for JsonLayer<W>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
