@@ -12,7 +12,7 @@ use tracing_subscriber::registry::LookupSpan;
 #[derive(Debug)]
 struct CustomFieldStorage(Map<String, Value>);
 
-trait JsonOutput<'a> {
+pub trait JsonOutput<'a> {
     fn write(&self, value: Value);
 }
 
@@ -36,6 +36,15 @@ impl<'a> JsonOutput<'a> for JsonStdout {
 
 pub struct JsonLayer<O = JsonStdout> {
     output: O,
+}
+
+impl<O1> JsonLayer<O1>
+where
+    O1: for<'output> JsonOutput<'output> + 'static,
+{
+    pub fn with_output<O2>(self, output: O2) -> JsonLayer<O2> {
+        JsonLayer { output }
+    }
 }
 
 #[allow(clippy::derivable_impls)]
@@ -247,9 +256,7 @@ mod tests {
         tracing_subscriber::fmt().pretty().init();
 
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
@@ -297,9 +304,7 @@ mod tests {
     #[test]
     fn two_spans_different_fields() {
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
@@ -333,9 +338,7 @@ mod tests {
     #[test]
     fn two_spans_same_fields() {
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
@@ -368,9 +371,7 @@ mod tests {
     #[test]
     fn two_spans_same_fields_including_event() {
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
@@ -402,9 +403,7 @@ mod tests {
     #[test]
     fn two_events_from_two_spans() {
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
@@ -451,9 +450,7 @@ mod tests {
     #[test]
     fn one_span_recorded_field() {
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
@@ -488,9 +485,7 @@ mod tests {
     #[test]
     fn one_span_recorded_field_overwriting_initial_field() {
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
@@ -524,9 +519,7 @@ mod tests {
     #[test]
     fn without_any_spans() {
         let data = Arc::new(Mutex::new(vec![]));
-        let layer = JsonLayer {
-            output: TestOutput { data: data.clone() },
-        };
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
 
         let subscriber = Registry::default().with(layer);
 
