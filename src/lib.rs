@@ -10,7 +10,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
 #[derive(Debug)]
-struct CustomFieldStorage(Map<String, serde_json::Value>);
+struct CustomFieldStorage(Map<String, Value>);
 
 trait JsonOutput<'a> {
     fn write(&self, value: Value);
@@ -77,7 +77,7 @@ where
         let mut extensions_mut = span.extensions_mut();
         let custom_field_storage: &mut CustomFieldStorage =
             extensions_mut.get_mut::<CustomFieldStorage>().unwrap();
-        let json_data: &mut Map<String, serde_json::Value> = &mut custom_field_storage.0;
+        let json_data: &mut Map<String, Value> = &mut custom_field_storage.0;
 
         // And add to using our old friend the visitor!
         let mut visitor = JsonVisitor(json_data);
@@ -92,7 +92,7 @@ where
             for span in scope.from_root() {
                 let extensions = span.extensions();
                 let storage = extensions.get::<CustomFieldStorage>().unwrap();
-                let field_data: &Map<String, serde_json::Value> = &storage.0;
+                let field_data: &Map<String, Value> = &storage.0;
 
                 for (key, value) in field_data {
                     fields.insert(key.clone(), value.clone());
@@ -126,7 +126,7 @@ where
     }
 }
 
-struct JsonVisitor<'a>(&'a mut Map<String, serde_json::Value>);
+struct JsonVisitor<'a>(&'a mut Map<String, Value>);
 
 impl<'a> tracing::field::Visit for JsonVisitor<'a> {
     fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
