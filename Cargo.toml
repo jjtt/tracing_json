@@ -1,6 +1,6 @@
 [package]
 name = "tracing_json_span_fields"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "Structured JSON logging from tracing with fields from spans"
