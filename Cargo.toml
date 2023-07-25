@@ -1,5 +1,5 @@
 [package]
-name = "tracing_json"
+name = "tracing_json_span_fields"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"

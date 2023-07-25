@@ -7,7 +7,7 @@ implementation treats spans as a way to provide context and adds all fields from
 ```rust
 use tracing::{info, info_span};
 use tracing_subscriber::prelude::*;
-use tracing_json::JsonLayer;
+use tracing_json_span_fields::JsonLayer;
 tracing_subscriber::registry().with(JsonLayer::pretty()).init();
 let _span = info_span!("A span", span_field = 42).entered();
 info!(logged_message_field = "value", "Logged message");
@@ -30,7 +30,7 @@ Will produce the following output
 use time::macros::format_description;
 use tracing::{error, info_span};
 use tracing_subscriber::prelude::*;
-use tracing_json::JsonLayer;
+use tracing_json_span_fields::JsonLayer;
 let timestamp_format = format_description!("[hour]:[minute]:[second].[subsecond digits:1]");
 tracing_subscriber::registry().with(JsonLayer::default().with_timestamp_format(timestamp_format)).init();
 let _span = info_span!("A span", span_field = 42).entered();
@@ -43,3 +43,7 @@ Will produce the following output
 
 ## Thanks
 * <https://burgers.io/custom-logging-in-rust-using-tracing>
+
+## See also
+
+* <https://github.com/vertexclique/tracing-json> is a very similar crate, but lacking documentation

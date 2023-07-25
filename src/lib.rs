@@ -7,7 +7,7 @@
 //! ```
 //! use tracing::{info, info_span};
 //! use tracing_subscriber::prelude::*;
-//! use tracing_json::JsonLayer;
+//! use tracing_json_span_fields::JsonLayer;
 //! tracing_subscriber::registry().with(JsonLayer::pretty()).init();
 //! let _span = info_span!("A span", span_field = 42).entered();
 //! info!(logged_message_field = "value", "Logged message");
@@ -33,7 +33,7 @@
 //! use time::macros::format_description;
 //! use tracing::{error, info_span};
 //! use tracing_subscriber::prelude::*;
-//! use tracing_json::JsonLayer;
+//! use tracing_json_span_fields::JsonLayer;
 //! let timestamp_format = format_description!("[hour]:[minute]:[second].[subsecond digits:1]");
 //! tracing_subscriber::registry().with(JsonLayer::default().with_timestamp_format(timestamp_format)).init();
 //! let _span = info_span!("A span", span_field = 42).entered();
@@ -375,7 +375,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_top": 0,
@@ -387,7 +387,7 @@ mod tests {
         );
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "ERROR",
                 "message": "BAZ",
                 "field_top": 0,
@@ -419,7 +419,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_top": 0,
@@ -453,7 +453,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_overwrite": 1,
@@ -486,7 +486,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "field_overwrite": "from event"
@@ -519,7 +519,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "ONE",
                 "field_top": 0,
@@ -531,7 +531,7 @@ mod tests {
         );
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "TWO",
                 "field_top": 0,
@@ -566,7 +566,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "event_field": 1.1,
@@ -601,7 +601,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "event_field": 1.1,
@@ -632,7 +632,7 @@ mod tests {
 
         assert_json_timestamp_name(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "event_field": 1.1,
@@ -667,7 +667,7 @@ mod tests {
 
         assert_json_timestamp_name_with_format(
             serde_json::json!({
-                "target": "tracing_json::tests",
+                "target": "tracing_json_span_fields::tests",
                 "log_level": "INFO",
                 "message": "FOOBAR",
                 "event_field": 1.1,
