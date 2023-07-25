@@ -32,10 +32,11 @@
 //! ```
 //! use time::macros::format_description;
 //! use tracing::{error, info_span};
+//! use tracing::level_filters::LevelFilter;
 //! use tracing_subscriber::prelude::*;
 //! use tracing_json_span_fields::JsonLayer;
 //! let timestamp_format = format_description!("[hour]:[minute]:[second].[subsecond digits:1]");
-//! tracing_subscriber::registry().with(JsonLayer::default().with_timestamp_format(timestamp_format)).init();
+//! tracing_subscriber::registry().with(JsonLayer::default().with_timestamp_format(timestamp_format).with_level(LevelFilter::ERROR)).init();
 //! let _span = info_span!("A span", span_field = 42).entered();
 //! error!(logged_message_field = "value", "Logged message");
 //! ```
@@ -43,7 +44,7 @@
 //! Will produce the following output
 //!
 //! ```json
-//! {"log_level":"ERROR","logged_message_field":"value","message":"Logged message","name":"event src/main.rs:123","span_field":42,"target":"tracing_json","timestamp":"10:02:01.9"}
+//! {"log_level":"ERROR","logged_message_field":"value","message":"Logged message","name":"event src/main.rs:123","target":"tracing_json","timestamp":"10:02:01.9"}
 //! ```
 //!
 //! ## Thanks
@@ -54,8 +55,9 @@ use serde_json::{Map, Value};
 use time::format_description::well_known::Iso8601;
 use time::formatting::Formattable;
 use time::OffsetDateTime;
+use tracing::level_filters::LevelFilter;
 use tracing::span::{Attributes, Record};
-use tracing::{Event, Id, Subscriber};
+use tracing::{Event, Id, Metadata, Subscriber};
 use tracing_subscriber::layer;
 use tracing_subscriber::layer::Context;
 #[allow(unused_imports)]
@@ -96,6 +98,7 @@ impl JsonOutput for JsonStdout {
 pub struct JsonLayer<O = JsonStdout, F = Iso8601> {
     output: O,
     timestamp_format: F,
+    max_level: LevelFilter,
 }
 
 impl Default for JsonLayer {
@@ -103,6 +106,7 @@ impl Default for JsonLayer {
         JsonLayer {
             output: JsonStdout::default(),
             timestamp_format: Iso8601::DEFAULT,
+            max_level: LevelFilter::INFO,
         }
     }
 }
@@ -125,6 +129,7 @@ where
         JsonLayer {
             output,
             timestamp_format: self.timestamp_format,
+            max_level: self.max_level,
         }
     }
 
@@ -135,6 +140,15 @@ where
         JsonLayer {
             output: self.output,
             timestamp_format,
+            max_level: self.max_level,
+        }
+    }
+
+    pub fn with_level(self, max_level: LevelFilter) -> JsonLayer<O, F> {
+        JsonLayer {
+            output: self.output,
+            timestamp_format: self.timestamp_format,
+            max_level,
         }
     }
 }
@@ -145,6 +159,10 @@ where
     O: JsonOutput + 'static,
     F: Formattable + 'static,
 {
+    fn enabled(&self, metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
+        metadata.level() <= &self.max_level
+    }
+
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         // Build our json object from the field values like we have been
         let mut fields = Map::new();
@@ -160,6 +178,10 @@ where
         let mut extensions = span.extensions_mut();
         // And store our data
         extensions.insert::<CustomFieldStorage>(storage);
+    }
+
+    fn max_level_hint(&self) -> Option<LevelFilter> {
+        Some(self.max_level)
     }
 
     fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
@@ -678,5 +700,97 @@ mod tests {
             &timestamp_format,
         );
         assert_eq!(None, iter.next(), "No more logged events");
+    }
+
+    #[test]
+    fn logging_levels() {
+        let data = Arc::new(Mutex::new(vec![]));
+        let layer = JsonLayer::default().with_output(TestOutput { data: data.clone() });
+
+        let subscriber = Registry::default().with(layer);
+
+        let before = OffsetDateTime::now_utc();
+
+        with_default(subscriber, || {
+            tracing::info!("INFO");
+            tracing::trace!("TRACE");
+        });
+
+        let mut data = data.lock().unwrap();
+        let mut iter = (*data).iter_mut();
+
+        assert_json_timestamp_name(
+            serde_json::json!({
+                "target": "tracing_json_span_fields::tests",
+                "log_level": "INFO",
+                "message": "INFO",
+            }),
+            "event src/lib.rs:",
+            &before,
+            iter.next().unwrap(),
+        );
+        assert_eq!(None, iter.next(), "No more logged events");
+    }
+
+    #[test]
+    fn logging_levels_trace() {
+        let data = Arc::new(Mutex::new(vec![]));
+        let layer = JsonLayer::default()
+            .with_output(TestOutput { data: data.clone() })
+            .with_level(LevelFilter::TRACE);
+
+        let subscriber = Registry::default().with(layer);
+
+        let before = OffsetDateTime::now_utc();
+
+        with_default(subscriber, || {
+            tracing::info!("INFO");
+            tracing::trace!("TRACE");
+        });
+
+        let mut data = data.lock().unwrap();
+        let mut iter = (*data).iter_mut();
+
+        assert_json_timestamp_name(
+            serde_json::json!({
+                "target": "tracing_json_span_fields::tests",
+                "log_level": "INFO",
+                "message": "INFO",
+            }),
+            "event src/lib.rs:",
+            &before,
+            iter.next().unwrap(),
+        );
+        assert_json_timestamp_name(
+            serde_json::json!({
+                "target": "tracing_json_span_fields::tests",
+                "log_level": "TRACE",
+                "message": "TRACE",
+            }),
+            "event src/lib.rs:",
+            &before,
+            iter.next().unwrap(),
+        );
+        assert_eq!(None, iter.next(), "No more logged events");
+    }
+
+    #[test]
+    fn logging_levels_off() {
+        let data = Arc::new(Mutex::new(vec![]));
+        let layer = JsonLayer::default()
+            .with_output(TestOutput { data: data.clone() })
+            .with_level(LevelFilter::OFF);
+
+        let subscriber = Registry::default().with(layer);
+
+        with_default(subscriber, || {
+            tracing::info!("INFO");
+            tracing::trace!("TRACE");
+        });
+
+        let mut data = data.lock().unwrap();
+        let mut iter = (*data).iter_mut();
+
+        assert_eq!(None, iter.next(), "No logged events");
     }
 }
