@@ -2,6 +2,9 @@
 name = "tracing_json"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Structured JSON logging from tracing with fields from spans"
+repository = "https://github.com/jjtt/tracing_json"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
