@@ -47,3 +47,4 @@ Will produce the following output
 ## See also
 
 * <https://github.com/vertexclique/tracing-json> is a very similar crate, but lacking documentation
+* <https://docs.rs/traceon/> is another alternative
