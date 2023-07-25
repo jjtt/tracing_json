@@ -1,3 +1,55 @@
+//! Structured JSON logging from [`tracing`] with fields from spans
+//!
+//! Unlike the JSON support in [`tracing_subscriber`], this
+//! implementation treats spans as a way to provide context and adds all fields from all spans to the logged events.
+//!
+//! ## Examples
+//! ```
+//! use tracing::{info, info_span};
+//! use tracing_subscriber::prelude::*;
+//! use tracing_json::JsonLayer;
+//! tracing_subscriber::registry().with(JsonLayer::pretty()).init();
+//! let _span = info_span!("A span", span_field = 42).entered();
+//! info!(logged_message_field = "value", "Logged message");
+//! ```
+//!
+//! Will produce the following output
+//!
+//! ```json
+//! {
+//!   "log_level": "INFO",
+//!   "logged_message_field": "value",
+//!   "message": "Logged message",
+//!   "name": "event src/main.rs:123",
+//!   "span_field": 42,
+//!   "target": "tracing_json",
+//!   "timestamp": "2023-07-25T09:53:01.790152227Z"
+//! }
+//! ```
+//!
+//! ### Customising timestamps
+//!
+//! ```
+//! use time::macros::format_description;
+//! use tracing::{error, info_span};
+//! use tracing_subscriber::prelude::*;
+//! use tracing_json::JsonLayer;
+//! let timestamp_format = format_description!("[hour]:[minute]:[second].[subsecond digits:1]");
+//! tracing_subscriber::registry().with(JsonLayer::default().with_timestamp_format(timestamp_format)).init();
+//! let _span = info_span!("A span", span_field = 42).entered();
+//! error!(logged_message_field = "value", "Logged message");
+//! ```
+//!
+//! Will produce the following output
+//!
+//! ```json
+//! {"log_level":"ERROR","logged_message_field":"value","message":"Logged message","name":"event src/main.rs:123","span_field":42,"target":"tracing_json","timestamp":"10:02:01.9"}
+//! ```
+//!
+//! ## Thanks
+//!
+//! * <https://burgers.io/custom-logging-in-rust-using-tracing>
+
 use serde_json::{Map, Value};
 use time::format_description::well_known::Iso8601;
 use time::formatting::Formattable;
@@ -13,10 +65,14 @@ use tracing_subscriber::registry::LookupSpan;
 #[derive(Debug)]
 struct CustomFieldStorage(Map<String, Value>);
 
+/// Something that can be used to write output from a [`JsonLayer`].
+///
+/// Primarily intended to allow custom outputs in unit testing.
 pub trait JsonOutput {
     fn write(&self, value: Value);
 }
 
+/// Default [`JsonOutput`] writing to stdout.
 #[derive(Default)]
 pub struct JsonStdout {
     pretty: bool,
@@ -35,6 +91,8 @@ impl JsonOutput for JsonStdout {
     }
 }
 
+/// An implementation of a [`tracing_subscriber::Layer`] that writes events as JSON using a
+/// [`JsonOutput`].
 pub struct JsonLayer<O = JsonStdout, F = Iso8601> {
     output: O,
     timestamp_format: F,
